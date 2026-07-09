@@ -5,8 +5,16 @@ Spring Boot service that compares two Telegram delivery strategies:
 - `POST /api/messages/queued` returns `202 Accepted` and sends from a bounded `BlockingQueue`.
 - `POST /api/messages/direct` sends in the request thread.
 
-Both paths share the same Telegram `429 retry_after` detection and retry logic. There is no database persistence and no local rate limiter, so the comparison focuses on request-thread sending versus `BlockingQueue` worker sending.
+This comparison highlights how different architectural approaches handle Telegram's rate-limiting behavior, specifically `429 Too Many Requests` responses.
 
+# Tech Stack
+
+- **Java 22**
+- **Spring Boot 4**
+- **Blocking Queue**
+- **RestTemplate Pooling**
+- **Jmeter**
+ 
 ## Configuration
 
 Set these environment variables before running:
@@ -41,12 +49,15 @@ Invoke-RestMethod http://localhost:8080/api/messages/queued/stats
 
 The stats response now includes how many queued messages were sent successfully and how many failed.
 
-## Stress Comparison
+# Stress Testing with JMeter
 
-Run both endpoints with the same payload and concurrency level. The queued endpoint should keep HTTP latency low while queue depth rises; the direct endpoint will expose request-thread blocking and any real Telegram `429 retry_after` delays.
+This project includes a JMeter test plan located in `load-tests/telegram-rate-limit.jmx` to help compare the performance of these strategies under load.
 
-Queued requests return a `trackingId`, `receivedAt`, and `status`. You can poll the queued message later with:
-
-```powershell
-Invoke-RestMethod http://localhost:8080/api/messages/queued/<trackingId>
-```
+1.  **Open JMeter**: Load the `load-tests/telegram-rate-limit.jmx` file.
+2.  **Configure**:
+    - Adjust the `Thread Group` settings to match your desired concurrency and test duration.
+    - Configure the `CSV Data Set Config` to point to a CSV file containing your test `chatId` values.
+3.  **Execute**: Run the test plan.
+    - The **Direct** strategy will demonstrate how request threads block when encountering Telegram `429` retry delays.
+    - The **Queued** strategy will demonstrate how to maintain low HTTP response latency by delegating sending tasks to the background.
+4.  **Analyze**: Use the "Summary Report" to compare response latency and throughput between the two delivery paths.
